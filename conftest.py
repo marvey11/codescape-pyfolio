@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from core.models import StockMetadata
-from core.services import JsonStockRepository
+from core.services import JsonStockMetadataRepository
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,19 +46,25 @@ def mock_repo_path(mock_config_dir: Path) -> Path:
 
 
 @pytest.fixture
-def empty_repo(mock_config_dir: Path) -> JsonStockRepository:
-    """Provides a clean, isolated JsonStockRepository instance targeting a temp file."""
+def empty_repo(mock_config_dir: Path) -> JsonStockMetadataRepository:
+    """
+    Provides a clean, isolated `JsonStockMetadataRepository` instance targeting a temp
+    file.
+    """
     json_path = mock_config_dir / "stock_metadata.json"
-    return JsonStockRepository(json_path)
+    return JsonStockMetadataRepository(json_path)
 
 
 @pytest.fixture
 def populated_repo(
-    empty_repo: JsonStockRepository,
+    empty_repo: JsonStockMetadataRepository,
     sample_stock_sap: StockMetadata,
     sample_stock_apple: StockMetadata,
-) -> JsonStockRepository:
-    """Provides a JsonStockRepository pre-populated with sample domain data."""
+) -> JsonStockMetadataRepository:
+    """
+    Provides a `JsonStockMetadataRepository` pre-populated with sample domain data.
+    """
     empty_repo.add(sample_stock_sap)
     empty_repo.add(sample_stock_apple)
+    empty_repo.commit()
     return empty_repo

@@ -32,6 +32,9 @@ def test_crud_replaces_and_persists_transaction(tmp_path: Path) -> None:
         update={"stock": StockMetadata(isin="DE0007164600", name="SAP")}
     )
     repository.update(replacement)
+
+    repository.commit()
+
     restored = JsonTransactionRepository(path).get(original.id)
 
     assert restored is not None

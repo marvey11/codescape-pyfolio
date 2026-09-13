@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from core.models import StockMetadata
-from core.services import JsonStockRepository, StockService
+from core.services import JsonStockMetadataRepository, StockService
 
 STOCK_DE01 = StockMetadata(
     isin="DE1234567890", name="DE Test 01", country_code="DE", currency_code="EUR"
@@ -18,7 +18,7 @@ STOCK_NL02 = StockMetadata(
 
 
 def service(tmp_path: Path, stocks: list[StockMetadata]) -> StockService:
-    repository = JsonStockRepository(tmp_path / "stock_metadata.json")
+    repository = JsonStockMetadataRepository(tmp_path / "stock_metadata.json")
     for stock in stocks:
         repository.add(stock)
     return StockService(repository)

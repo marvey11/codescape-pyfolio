@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import tempfile
-from json import JSONDecodeError
 from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
 from pydantic import TypeAdapter
 
-from core.exceptions import RepositoryCorruptedError
 from core.models import Transaction
-
-TransactionListAdapter = TypeAdapter(list[Transaction])
+from core.services.base import AbstractJsonRepository
 
 
 class TransactionRepository(Protocol):
@@ -28,52 +24,27 @@ class TransactionRepository(Protocol):
     def delete(self, transaction_id: UUID | str) -> None: ...
 
 
-class JsonTransactionRepository:
+TransactionListAdapter = TypeAdapter(list[Transaction])
+
+
+class JsonTransactionRepository(AbstractJsonRepository[list[Transaction]]):
     """Store transactions in a validated JSON array."""
 
-    DEFAULT_DATA_PATH = Path("~/.codescape/pyfolio")
-    DEFAULT_TRANSACTIONS_PATH = DEFAULT_DATA_PATH / "transactions.json"
+    DEFAULT_JSON_FILE_NAME = Path("transactions.json")
 
-    def __init__(self, json_path: Path | None = None) -> None:
-        self.json_path = (
-            (json_path if json_path is not None else self.DEFAULT_TRANSACTIONS_PATH)
-            .expanduser()
-            .resolve()
+    def __init__(self, json_path: Path | None) -> None:
+        super().__init__(json_path)
+
+    def _default_data(self) -> list[Transaction]:
+        return []
+
+    def _serialize(self, data: list[Transaction]) -> bytes:
+        return (
+            TransactionListAdapter.dump_json(data, indent=2, exclude_none=True) + b"\n"
         )
-        self._cache: list[Transaction] | None = None
 
-    def _get_data(self) -> list[Transaction]:
-        if self._cache is not None:
-            return self._cache
-
-        if not self.json_path.exists():
-            self.json_path.parent.mkdir(parents=True, exist_ok=True)
-            self.json_path.touch()
-            self._cache = []
-            return self._cache
-
-        try:
-            content = self.json_path.read_text(encoding="utf-8").strip()
-            self._cache = (
-                [] if not content else TransactionListAdapter.validate_json(content)
-            )
-            return self._cache
-        except (JSONDecodeError, ValueError) as err:
-            raise RepositoryCorruptedError(
-                f"Failed to parse repository file at '{self.json_path}': {err}"
-            ) from err
-
-    def _save_data(self) -> None:
-        if self._cache is None:
-            return
-        json_bytes = TransactionListAdapter.dump_json(self._cache, indent=2) + b"\n"
-        self.json_path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "wb", dir=self.json_path.parent, delete=False
-        ) as tmp_file:
-            tmp_file.write(json_bytes)
-            tmp_path = Path(tmp_file.name)
-        tmp_path.replace(self.json_path)
+    def _deserialize(self, raw_bytes: bytes) -> list[Transaction]:
+        return TransactionListAdapter.validate_json(raw_bytes)
 
     @staticmethod
     def _normalise_id(transaction_id: UUID | str) -> UUID:
@@ -92,14 +63,14 @@ class JsonTransactionRepository:
         if self.get(transaction.id) is not None:
             raise ValueError(f"Transaction {transaction.id} already exists.")
         self._get_data().append(transaction)
-        self._save_data()
+        self.mark_dirty()
 
     def update(self, transaction: Transaction) -> None:
         data = self._get_data()
         for index, existing in enumerate(data):
             if existing.id == transaction.id:
                 data[index] = transaction
-                self._save_data()
+                self.mark_dirty()
                 return
         raise KeyError(f"Transaction {transaction.id} not found.")
 
@@ -109,6 +80,6 @@ class JsonTransactionRepository:
         for index, transaction in enumerate(data):
             if transaction.id == target_id:
                 del data[index]
-                self._save_data()
+                self.mark_dirty()
                 return
         raise KeyError(f"Transaction {target_id} not found.")
