@@ -1,8 +1,8 @@
-import tempfile
 from abc import ABC, abstractmethod
 from json import JSONDecodeError
 from pathlib import Path
 
+from codescape.util.fileutils import atomic_write_bytes
 from pydantic import ValidationError
 
 from core.exceptions import RepositoryCorruptedError
@@ -35,15 +35,7 @@ class AbstractJsonRepository[T](ABC):
             return
 
         json_bytes = self._serialize(self._cache)
-        self.json_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with tempfile.NamedTemporaryFile(
-            "wb", dir=self.json_path.parent, delete=False
-        ) as tmp_file:
-            tmp_file.write(json_bytes)
-            tmp_path = Path(tmp_file.name)
-
-        tmp_path.replace(self.json_path)
+        atomic_write_bytes(self.json_path, json_bytes)
         self._is_dirty = False
 
     @abstractmethod

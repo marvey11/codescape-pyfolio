@@ -4,10 +4,11 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "pydantic>=2.13.4",
-]
+dependencies = ["codescape-shared-pie", "pydantic>=2.13.4"]
 
 [build-system]
-requires = ["hatchling"] # Or "flit_core", "setuptools"
+requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+codescape-shared-pie = { git = "https://github.com/marvey11/codescape-shared-pie.git", tag = "v0.1.1" }
