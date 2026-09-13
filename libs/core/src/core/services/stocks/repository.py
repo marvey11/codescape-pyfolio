@@ -1,18 +1,16 @@
-import tempfile
-from json import JSONDecodeError
 from pathlib import Path
 from typing import Protocol
 
 from pydantic import TypeAdapter
 
-from core.exceptions import RepositoryCorruptedError
 from core.models import StockMetadata
+from core.services.base import AbstractJsonRepository
 
 
 class StockRepository(Protocol):
-    def get(self, isin: str) -> StockMetadata | None: ...
-
     def list_all(self) -> list[StockMetadata]: ...
+
+    def get(self, isin: str) -> StockMetadata | None: ...
 
     def add(self, stock: StockMetadata) -> None: ...
 
@@ -25,71 +23,33 @@ class StockRepository(Protocol):
 StockDictAdapter = TypeAdapter(dict[str, StockMetadata])
 
 
-class JsonStockRepository:
-    """Store a list of stock metadata entities."""
-
-    DEFAULT_DATA_PATH = Path("~/.codescape/pyfolio")
-    DEFAULT_STOCKS_METADATA_PATH = DEFAULT_DATA_PATH / "stock_metadata.json"
+class JsonStockMetadataRepository(AbstractJsonRepository[dict[str, StockMetadata]]):
+    DEFAULT_JSON_FILE_NAME = Path("stocks.json")
 
     def __init__(self, json_path: Path | None = None) -> None:
-        self.json_path = (
-            (json_path if json_path is not None else self.DEFAULT_STOCKS_METADATA_PATH)
-            .expanduser()
-            .resolve()
-        )
-        self._cache: dict[str, StockMetadata] | None = None
+        super().__init__(json_path)
 
-    def _get_data(self) -> dict[str, StockMetadata]:
-        if self._cache is not None:
-            return self._cache
+    def _default_data(self) -> dict[str, StockMetadata]:
+        return {}
 
-        if not self.json_path.exists():
-            self._cache = {}
-            return self._cache
+    def _serialize(self, data: dict[str, StockMetadata]) -> bytes:
+        return StockDictAdapter.dump_json(data, indent=2, exclude_none=True) + b"\n"
 
-        try:
-            content = self.json_path.read_text(encoding="utf-8").strip()
-            if not content:
-                self._cache = {}
-                return self._cache
-
-            adapter = TypeAdapter(dict[str, StockMetadata])
-            self._cache = adapter.validate_json(content)
-            return self._cache
-        except (JSONDecodeError, ValueError) as err:
-            raise RepositoryCorruptedError(
-                f"Failed to parse repository file at '{self.json_path}': {err}"
-            ) from err
-
-    def _save_data(self) -> None:
-        if self._cache is None:
-            return
-
-        json_bytes = (
-            StockDictAdapter.dump_json(self._cache, indent=2, exclude_none=True) + b"\n"
-        )
-        self.json_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with tempfile.NamedTemporaryFile(
-            "wb", dir=self.json_path.parent, delete=False
-        ) as tmp_file:
-            tmp_file.write(json_bytes)
-            tmp_path = Path(tmp_file.name)
-
-        tmp_path.replace(self.json_path)
-
-    def get(self, isin: str) -> StockMetadata | None:
-        return self._get_data().get(isin)
+    def _deserialize(self, raw_bytes: bytes) -> dict[str, StockMetadata]:
+        return StockDictAdapter.validate_json(raw_bytes)
 
     def list_all(self) -> list[StockMetadata]:
         return list(self._get_data().values())
+
+    def get(self, isin: str) -> StockMetadata | None:
+        return self._get_data().get(isin)
 
     def add(self, stock: StockMetadata) -> None:
         data = self._get_data()
         if stock.isin in data:
             raise ValueError(f"Stock {stock.isin} already exists.")
         data[stock.isin] = stock
-        self._save_data()
+        self.mark_dirty()
 
     def update(self, stock: StockMetadata) -> None:
         data = self._get_data()
@@ -97,11 +57,11 @@ class JsonStockRepository:
             raise KeyError(f"Stock {stock.isin} not found.")
 
         data[stock.isin].update(stock)
-        self._save_data()
+        self.mark_dirty()
 
     def delete(self, isin: str) -> None:
         data = self._get_data()
         if isin not in data:
             raise KeyError(f"Stock {isin} not found.")
         del data[isin]
-        self._save_data()
+        self.mark_dirty()

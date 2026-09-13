@@ -37,6 +37,8 @@ def service(tmp_path: Path, transactions: list[Transaction]) -> PortfolioService
     transaction_repository = JsonTransactionRepository(tmp_path / "transactions.json")
     for item in transactions:
         transaction_repository.add(item)
+    transaction_repository.commit()
+
     return PortfolioService(
         TransactionService(transaction_repository),
         JsonPortfolioRepository(tmp_path / "portfolio.json"),

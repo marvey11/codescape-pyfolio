@@ -1,7 +1,7 @@
 import re
 from typing import Self
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 ISIN_REGEX = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 COUNTRY_REGEX = re.compile(r"^[A-Z]{2}$")
@@ -9,6 +9,8 @@ CURRENCY_REGEX = re.compile(r"^[A-Z]{3}$")
 
 
 class StockMetadata(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     isin: str
     name: str | None = None
     country_code: str | None = None
@@ -50,7 +52,7 @@ class StockMetadata(BaseModel):
         return v
 
     def update(self, other: Self) -> None:
-        """Updates the instance attributes in-place."""
+        """Updates instance attributes in-place, skipping None fields."""
         for key, value in other.model_dump(exclude_none=True).items():
             if key != "isin":
                 setattr(self, key, value)

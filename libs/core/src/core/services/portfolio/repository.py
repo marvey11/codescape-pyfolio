@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import tempfile
 from hashlib import sha256
-from json import JSONDecodeError
 from pathlib import Path
 from typing import Protocol
 
 from pydantic import TypeAdapter
 
-from core.exceptions import RepositoryCorruptedError
 from core.models import Portfolio, Transaction
-
-PortfolioAdapter = TypeAdapter(Portfolio)
+from core.services.base import AbstractJsonRepository
 
 
 class PortfolioRepository(Protocol):
@@ -22,43 +18,37 @@ class PortfolioRepository(Protocol):
     def save(self, portfolio: Portfolio) -> None: ...
 
 
-class JsonPortfolioRepository:
+PortfolioAdapter = TypeAdapter(Portfolio)
+
+
+class JsonPortfolioRepository(AbstractJsonRepository[Portfolio]):
     """Store a validated portfolio document and its transaction cache."""
 
-    DEFAULT_DATA_PATH = Path("~/.codescape/pyfolio")
-    DEFAULT_PORTFOLIO_PATH = DEFAULT_DATA_PATH / "portfolio.json"
+    DEFAULT_JSON_FILE_NAME = Path("portfolio.json")
 
     def __init__(self, json_path: Path | None = None) -> None:
-        self.json_path = (
-            (json_path if json_path is not None else self.DEFAULT_PORTFOLIO_PATH)
-            .expanduser()
-            .resolve()
-        )
+        super().__init__(json_path)
+
+    def _default_data(self) -> Portfolio:
+        return Portfolio()
+
+    def _serialize(self, data: Portfolio) -> bytes:
+        return PortfolioAdapter.dump_json(data, indent=2, exclude_none=True) + b"\n"
+
+    def _deserialize(self, raw_bytes: bytes) -> Portfolio:
+        return PortfolioAdapter.validate_json(raw_bytes)
 
     def load(self) -> Portfolio | None:
-        """Load the cached portfolio, returning ``None`` for an empty file."""
-        if not self.json_path.exists():
+        """Load the cached portfolio, if one has been persisted."""
+        if not self.json_path.exists() and self._cache is None:
             return None
-        try:
-            content = self.json_path.read_text(encoding="utf-8").strip()
-            if not content:
-                return None
-            return PortfolioAdapter.validate_json(content)
-        except (JSONDecodeError, ValueError) as err:
-            raise RepositoryCorruptedError(
-                f"Failed to parse portfolio file at '{self.json_path}': {err}"
-            ) from err
+        return self._get_data()
 
     def save(self, portfolio: Portfolio) -> None:
-        """Atomically persist a validated portfolio document."""
-        payload = PortfolioAdapter.dump_json(portfolio, indent=2) + b"\n"
-        self.json_path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "wb", dir=self.json_path.parent, delete=False
-        ) as tmp_file:
-            tmp_file.write(payload)
-            tmp_path = Path(tmp_file.name)
-        tmp_path.replace(self.json_path)
+        """Persist a newly computed portfolio."""
+        self._cache = portfolio
+        self.mark_dirty()
+        self.commit()
 
 
 def transaction_hash(transactions: list[Transaction]) -> str:
