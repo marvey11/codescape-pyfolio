@@ -15,4 +15,4 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 core = { workspace = true }
-codescape-shared-pie = { git = "https://github.com/marvey11/codescape-shared-pie.git", tag = "v0.1.1" }
+codescape-shared-pie = { git = "https://github.com/marvey11/codescape-shared-pie.git", tag = "v0.1.2" }
